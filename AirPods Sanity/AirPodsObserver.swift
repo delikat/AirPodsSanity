@@ -33,6 +33,11 @@ class AirPodsObserver: ObservableObject
 		self.PerformInputEvaluation()
 		self.PerformOutputEvaluation()
 		self.AddObservers()
+
+		// An output switch above may cause macOS to silently hijack
+		// the default input (same issue that EvaluateOutputPriority
+		// handles). Schedule a delayed re-evaluation to correct it.
+		self.ScheduleDelayedInputReEvaluation()
 	}
 
 	deinit
