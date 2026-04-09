@@ -16,8 +16,6 @@ class AirPodsObserver: ObservableObject
 
 	private var _Observers: [NSObjectProtocol]
 
-	private var _DefaultInputDeviceName: String?
-
 	init()
 	{
 		self._Preferences = Preferences.Instance
@@ -25,7 +23,8 @@ class AirPodsObserver: ObservableObject
 		self._NotificationCenter = NotificationCenter.default
 		self._Observers = []
 
-		self.UpdateDefaultInputDevice()
+		self.EvaluateInputPriority()
+		self.EvaluateOutputPriority()
 		self.AddObservers()
 	}
 
@@ -35,41 +34,93 @@ class AirPodsObserver: ObservableObject
 	}
 }
 
-private extension AirPodsObserver
+internal extension AirPodsObserver
 {
-	func UpdateDefaultInputDevice()
+	func EvaluateInputPriority()
 	{
-		guard let __DefaultInputDevice = self._Simply.defaultInputDevice else { return }
-		guard let _ = self._Preferences.AirPodsDeviceNames.filter({ $0 == __DefaultInputDevice.name }).first else
-		{
-			self._DefaultInputDeviceName = __DefaultInputDevice.name
-			return
-		}
-
 		if !self._Preferences.IsEnabled
 		{
 			return
 		}
 
-		guard let __NewInputDeviceName = self._Preferences.InputDeviceName != nil ? self._Preferences.InputDeviceName : self._DefaultInputDeviceName else { return }
-		guard let __InputDevice = self._Simply.allInputDevices.filter({ $0.name == __NewInputDeviceName }).first else { return }
+		let __PriorityList = self._Preferences.InputDevicePriority
 
-		if __DefaultInputDevice.id != __InputDevice.id
+		guard !__PriorityList.isEmpty else { return }
+
+		let __AvailableDevices = self._Simply.allInputDevices
+		guard let __DesiredDevice = self.FindHighestPriorityDevice(priorityList: __PriorityList, availableDevices: __AvailableDevices) else { return }
+		guard let __CurrentDefault = self._Simply.defaultInputDevice else { return }
+
+		if __CurrentDefault.id != __DesiredDevice.id
 		{
+			NSLog("AirPods Sanity: Switching input device from '\(__CurrentDefault.name)' to '\(__DesiredDevice.name)' (priority-based)")
+
 			self.RemoveObservers()
-			__InputDevice.isDefaultInputDevice = true
+			__DesiredDevice.isDefaultInputDevice = true
 			self.AddObservers()
 		}
+	}
 
+	func EvaluateOutputPriority()
+	{
+		if !self._Preferences.IsEnabled
+		{
+			return
+		}
+
+		let __PriorityList = self._Preferences.OutputDevicePriority
+
+		guard !__PriorityList.isEmpty else { return }
+
+		let __AvailableDevices = self._Simply.allOutputDevices
+		guard let __DesiredDevice = self.FindHighestPriorityDevice(priorityList: __PriorityList, availableDevices: __AvailableDevices) else { return }
+		guard let __CurrentDefault = self._Simply.defaultOutputDevice else { return }
+
+		if __CurrentDefault.id != __DesiredDevice.id
+		{
+			NSLog("AirPods Sanity: Switching output device from '\(__CurrentDefault.name)' to '\(__DesiredDevice.name)' (priority-based)")
+
+			self.RemoveObservers()
+			__DesiredDevice.isDefaultOutputDevice = true
+			self.AddObservers()
+
+			self.BoostSampleRateAfterDelay(device: __DesiredDevice)
+		}
+	}
+
+	func EvaluateAllPriorities()
+	{
+		self.EvaluateInputPriority()
+		self.EvaluateOutputPriority()
+	}
+}
+
+private extension AirPodsObserver
+{
+	func FindHighestPriorityDevice(priorityList: [String], availableDevices: [AudioDevice]) -> AudioDevice?
+	{
+		for __DeviceName in priorityList
+		{
+			if let __Device = availableDevices.first(where: { $0.name == __DeviceName })
+			{
+				return __Device
+			}
+		}
+
+		return nil
+	}
+
+	func BoostSampleRateAfterDelay(device: AudioDevice)
+	{
 		let __Seconds = 10.0
 
 		DispatchQueue.main.asyncAfter(deadline: .now() + __Seconds)
 		{
-			guard let __DefaultOutputDevice = self._Simply.defaultOutputDevice else { return }
-			guard let __SampleRates = __DefaultOutputDevice.nominalSampleRates?.sorted(by: { $0 > $1 }) else { return }
+			guard let __SampleRates = device.nominalSampleRates?.sorted(by: { $0 > $1 }) else { return }
+			guard !__SampleRates.isEmpty else { return }
 
 			self.RemoveObservers()
-			__DefaultOutputDevice.setNominalSampleRate(__SampleRates[0])
+			device.setNominalSampleRate(__SampleRates[0])
 			self.AddObservers()
 		}
 	}
@@ -78,7 +129,13 @@ private extension AirPodsObserver
 	{
 		self._Observers.append(contentsOf:[
 			self._NotificationCenter.addObserver(forName: .defaultInputDeviceChanged, object: nil, queue: .main) { (_) in
-				self.UpdateDefaultInputDevice()
+				self.EvaluateInputPriority()
+			},
+			self._NotificationCenter.addObserver(forName: .defaultOutputDeviceChanged, object: nil, queue: .main) { (_) in
+				self.EvaluateOutputPriority()
+			},
+			self._NotificationCenter.addObserver(forName: .priorityListChanged, object: nil, queue: .main) { (_) in
+				self.EvaluateAllPriorities()
 			},
 		])
 	}

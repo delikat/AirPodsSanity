@@ -10,7 +10,12 @@
 "MenuBar.ShowInMenuBar" = "In der Menüleiste anzeigen";
 "MenuBar.ShowInDock" = "Im Dock anzeigen";
 "MenuBar.IsEnabled" = "Auf bevorzugtes Eingabegerät umschalten";
-"MenuBar.InputDevices" = "Bevorzugtes Eingabegerät:";
-"MenuBar.OutputDevices" = "AirPods-Geräte auswählen:";
+"MenuBar.InputDevices" = "Eingabegerät-Priorität:";
+"MenuBar.OutputDevices" = "Ausgabegerät-Priorität:";
 "MenuBar.Quit" = "Beenden";
 "MenuBar.QuitShortcut" = "b";
+"MenuBar.MoveUp" = "Nach oben";
+"MenuBar.MoveDown" = "Nach unten";
+"MenuBar.AddToPriority" = "Zur Prioritätsliste hinzufügen";
+"MenuBar.RemoveFromPriority" = "Aus Prioritätsliste entfernen";
+"MenuBar.Disconnected" = "getrennt";
