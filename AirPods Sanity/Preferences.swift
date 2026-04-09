@@ -172,6 +172,7 @@ class Preferences
 	
 	public func WriteSettings()
 	{
+		self.SyncLegacyKeys()
 		PreferencesLoader.WriteSettings(preferences: self._PreferencesFile)
 	}
 	
@@ -196,7 +197,23 @@ class Preferences
 
 		if __DidMigrate
 		{
-			self.WriteSettings()
+			PreferencesLoader.WriteSettings(preferences: self._PreferencesFile)
+		}
+	}
+
+	private func SyncLegacyKeys()
+	{
+		// Keep legacy keys in sync with the new priority lists so that
+		// downgrading to an older build within the compatibility window
+		// picks up any changes the user made via the priority UI.
+		if let __InputPriority = self._PreferencesFile.InputDevicePriority
+		{
+			self._PreferencesFile.InputDeviceName = __InputPriority.first
+		}
+
+		if let __OutputPriority = self._PreferencesFile.OutputDevicePriority
+		{
+			self._PreferencesFile.AirPodsDeviceNames = __OutputPriority
 		}
 	}
 }
