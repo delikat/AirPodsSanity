@@ -19,6 +19,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject
 	private var _MenuBar: MenuBar!
 	private var _InputSubscription: IDisposable!
 	private var _OutputSubscription: IDisposable!
+	private var _DefaultDeviceSubscription: IDisposable!
 	private var _PriorityObserver: NSObjectProtocol?
 	
 	override init()
@@ -71,6 +72,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject
 		if self._OutputSubscription != nil
 		{
 			self._OutputSubscription.dispose()
+		}
+
+		if self._DefaultDeviceSubscription != nil
+		{
+			self._DefaultDeviceSubscription.dispose()
 		}
 
 		if let __Observer = self._PriorityObserver
@@ -142,6 +148,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject
 		self._Devices = DevicesObserver()
 		self._InputSubscription = self._Devices.InputDevicesChanged.addHandler(target: self, handler: AppDelegate.OnInputDevicesChanged)
 		self._OutputSubscription = self._Devices.OutputDevicesChanged.addHandler(target: self, handler: AppDelegate.OnOutputDevicesChanged)
+		self._DefaultDeviceSubscription = self._Devices.DefaultDeviceChanged.addHandler(target: self, handler: AppDelegate.OnDefaultDeviceChanged)
 
 		self._PriorityObserver = NotificationCenter.default.addObserver(forName: .priorityListChanged, object: nil, queue: .main) { [weak self] _ in
 			self?.OnPriorityListChanged()
@@ -168,6 +175,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject
 		let __IsMenuVisible = self._MenuBar.IsVisible
 		self._MenuBar.CreateMenu()
 		
+		if __IsMenuVisible
+		{
+			self._MenuBar.Show()
+		}
+	}
+
+	func OnDefaultDeviceChanged(data: Void)
+	{
+		let __IsMenuVisible = self._MenuBar.IsVisible
+		self._MenuBar.CreateMenu()
+
 		if __IsMenuVisible
 		{
 			self._MenuBar.Show()

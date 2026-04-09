@@ -27,8 +27,11 @@ class AirPodsObserver: ObservableObject
 		self._NotificationCenter = NotificationCenter.default
 		self._Observers = []
 
-		self.EvaluateInputPriority()
-		self.EvaluateOutputPriority()
+		// Evaluate without observer management — no observers are
+		// registered yet so there is nothing to remove and nothing
+		// that could fire re-entrantly.
+		self.PerformInputEvaluation()
+		self.PerformOutputEvaluation()
 		self.AddObservers()
 	}
 
@@ -40,7 +43,48 @@ class AirPodsObserver: ObservableObject
 
 internal extension AirPodsObserver
 {
+	// Called from notification handlers — wraps evaluation with
+	// observer teardown/setup to prevent re-entrant notifications.
+
 	func EvaluateInputPriority()
+	{
+		self.RemoveObservers()
+		self.PerformInputEvaluation()
+		self.AddObservers()
+	}
+
+	func EvaluateOutputPriority()
+	{
+		self.RemoveObservers()
+		self.PerformOutputEvaluation()
+		self.AddObservers()
+
+		// macOS may silently flip the default input to the headset mic
+		// when we switch the output to a Bluetooth device. Because
+		// observers were removed during the switch, that
+		// defaultInputDeviceChanged notification was lost.
+		// Re-evaluate input after a short delay to correct the hijack.
+		self.ScheduleDelayedInputReEvaluation()
+	}
+
+	func EvaluateAllPriorities()
+	{
+		self.RemoveObservers()
+		self.PerformInputEvaluation()
+		self.PerformOutputEvaluation()
+		self.AddObservers()
+
+		// Same delayed re-evaluation: an output switch may trigger
+		// a cascading input change that we need to catch.
+		self.ScheduleDelayedInputReEvaluation()
+	}
+}
+
+private extension AirPodsObserver
+{
+	// Core evaluation logic — does NOT manage observers.
+
+	func PerformInputEvaluation()
 	{
 		if !self._Preferences.IsEnabled
 		{
@@ -65,14 +109,11 @@ internal extension AirPodsObserver
 		if __CurrentDefault.id != __DesiredDevice.id
 		{
 			NSLog("AirPods Sanity: Switching input device from '\(__CurrentDefault.name)' to '\(__DesiredDevice.name)' (priority-based)")
-
-			self.RemoveObservers()
 			__DesiredDevice.isDefaultInputDevice = true
-			self.AddObservers()
 		}
 	}
 
-	func EvaluateOutputPriority()
+	func PerformOutputEvaluation()
 	{
 		if !self._Preferences.IsEnabled
 		{
@@ -90,24 +131,20 @@ internal extension AirPodsObserver
 		if __CurrentDefault.id != __DesiredDevice.id
 		{
 			NSLog("AirPods Sanity: Switching output device from '\(__CurrentDefault.name)' to '\(__DesiredDevice.name)' (priority-based)")
-
-			self.RemoveObservers()
 			__DesiredDevice.isDefaultOutputDevice = true
-			self.AddObservers()
 
 			self.BoostSampleRateAfterDelay(device: __DesiredDevice)
 		}
 	}
 
-	func EvaluateAllPriorities()
+	func ScheduleDelayedInputReEvaluation()
 	{
-		self.EvaluateInputPriority()
-		self.EvaluateOutputPriority()
+		DispatchQueue.main.asyncAfter(deadline: .now() + 1.0)
+		{
+			self.EvaluateInputPriority()
+		}
 	}
-}
 
-private extension AirPodsObserver
-{
 	func LegacyInputFallback()
 	{
 		guard let __DefaultInputDevice = self._Simply.defaultInputDevice else { return }
@@ -128,9 +165,7 @@ private extension AirPodsObserver
 
 		if __DefaultInputDevice.id != __InputDevice.id
 		{
-			self.RemoveObservers()
 			__InputDevice.isDefaultInputDevice = true
-			self.AddObservers()
 		}
 
 		let __Seconds = 10.0

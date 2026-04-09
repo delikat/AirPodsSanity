@@ -12,6 +12,7 @@ class DevicesObserver: ObservableObject
 {
 	let InputDevicesChanged = Event<[AudioDevice]>()
 	let OutputDevicesChanged = Event<[AudioDevice]>()
+	let DefaultDeviceChanged = Event<Void>()
 
 	private let _Simply = SimplyCoreAudio()
 	private var _Observers = [NSObjectProtocol]()
@@ -41,10 +42,12 @@ internal extension DevicesObserver
 {
 	func UpdateDefaultInputDevice()
 	{
+		self.DefaultDeviceChanged.raise(data: ())
 	}
 
 	func UpdateDefaultOutputDevice()
 	{
+		self.DefaultDeviceChanged.raise(data: ())
 	}
 
 	func UpdateDefaultSystemDevice()
