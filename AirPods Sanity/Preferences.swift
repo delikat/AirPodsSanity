@@ -169,6 +169,44 @@ class Preferences
 			self._PreferencesFile.OutputDevicePriority = value
 		}
 	}
+
+	public var KnownInputDeviceNames: [String]
+	{
+		get
+		{
+			if let __UnWrapped = self._PreferencesFile.KnownInputDeviceNames
+			{
+				return __UnWrapped
+			}
+			else
+			{
+				return []
+			}
+		}
+		set(value)
+		{
+			self._PreferencesFile.KnownInputDeviceNames = value
+		}
+	}
+
+	public var KnownOutputDeviceNames: [String]
+	{
+		get
+		{
+			if let __UnWrapped = self._PreferencesFile.KnownOutputDeviceNames
+			{
+				return __UnWrapped
+			}
+			else
+			{
+				return []
+			}
+		}
+		set(value)
+		{
+			self._PreferencesFile.KnownOutputDeviceNames = value
+		}
+	}
 	
 	public func WriteSettings()
 	{
@@ -203,22 +241,17 @@ class Preferences
 
 	private func SyncLegacyKeys()
 	{
-		// Keep InputDeviceName in sync with the top-ranked input so that
-		// downgrading within the compatibility window picks up edits.
+		// Keep legacy keys in sync with the new priority lists so that:
+		// (a) LegacyInputFallback() sees newly added/removed AirPods models,
+		// (b) downgrading within the compatibility window picks up edits.
 		if let __InputPriority = self._PreferencesFile.InputDevicePriority
 		{
 			self._PreferencesFile.InputDeviceName = __InputPriority.first
 		}
 
-		// AirPodsDeviceNames is intentionally NOT synced from
-		// OutputDevicePriority. The two have different semantics:
-		// AirPodsDeviceNames marks devices whose mic should be
-		// overridden (the legacy sanitizer behavior), while
-		// OutputDevicePriority is the ranked preference list for
-		// output selection. Blindly copying all output priorities
-		// into AirPodsDeviceNames would cause the legacy fallback
-		// path to treat every prioritised output as an "AirPods"
-		// device and incorrectly hijack the input when those
-		// non-AirPods outputs are selected.
+		if let __OutputPriority = self._PreferencesFile.OutputDevicePriority
+		{
+			self._PreferencesFile.AirPodsDeviceNames = __OutputPriority
+		}
 	}
 }

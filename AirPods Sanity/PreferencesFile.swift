@@ -18,4 +18,6 @@ class PreferencesFile: Codable
 	var AirPodsDeviceNames: [String]?
 	var InputDevicePriority: [String]?
 	var OutputDevicePriority: [String]?
+	var KnownInputDeviceNames: [String]?
+	var KnownOutputDeviceNames: [String]?
 }

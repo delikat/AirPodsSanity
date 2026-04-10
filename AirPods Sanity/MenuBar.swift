@@ -225,8 +225,16 @@ class MenuBar
 		let __PriorityList = preferences.InputDevicePriority
 		let __DefaultDevice = simply.defaultInputDevice
 
+		// Persist any newly seen input device names
+		let __CurrentNames = __AllDevices.map { $0.name }
+		self.UpdateKnownDevices(currentNames: __CurrentNames, isInput: true)
+
+		// Merge currently connected + previously seen for the addable pool
+		let __KnownNames = preferences.KnownInputDeviceNames
+
 		return self.CreatePriorityDeviceItems(
 			allDevices: __AllDevices,
+			knownDeviceNames: __KnownNames,
 			priorityList: __PriorityList,
 			activeDeviceName: __DefaultDevice?.name,
 			isInput: true
@@ -239,15 +247,53 @@ class MenuBar
 		let __PriorityList = preferences.OutputDevicePriority
 		let __DefaultDevice = simply.defaultOutputDevice
 
+		// Persist any newly seen output device names
+		let __CurrentNames = __AllDevices.map { $0.name }
+		self.UpdateKnownDevices(currentNames: __CurrentNames, isInput: false)
+
+		// Merge currently connected + previously seen for the addable pool
+		let __KnownNames = preferences.KnownOutputDeviceNames
+
 		return self.CreatePriorityDeviceItems(
 			allDevices: __AllDevices,
+			knownDeviceNames: __KnownNames,
 			priorityList: __PriorityList,
 			activeDeviceName: __DefaultDevice?.name,
 			isInput: false
 		)
 	}
 
-	private func CreatePriorityDeviceItems(allDevices: [AudioDevice], priorityList: [String], activeDeviceName: String?, isInput: Bool) -> [NSMenuItem]
+	private func UpdateKnownDevices(currentNames: [String], isInput: Bool)
+	{
+		var __Known = isInput ? self._Preferences.KnownInputDeviceNames : self._Preferences.KnownOutputDeviceNames
+		let __KnownSet = Set(__Known)
+		var __DidChange = false
+
+		for __Name in currentNames
+		{
+			if !__KnownSet.contains(__Name)
+			{
+				__Known.append(__Name)
+				__DidChange = true
+			}
+		}
+
+		if __DidChange
+		{
+			if isInput
+			{
+				self._Preferences.KnownInputDeviceNames = __Known
+			}
+			else
+			{
+				self._Preferences.KnownOutputDeviceNames = __Known
+			}
+
+			self._Preferences.WriteSettings()
+		}
+	}
+
+	private func CreatePriorityDeviceItems(allDevices: [AudioDevice], knownDeviceNames: [String], priorityList: [String], activeDeviceName: String?, isInput: Bool) -> [NSMenuItem]
 	{
 		var __MenuItems: [NSMenuItem] = []
 		let __AllDeviceNames = Set(allDevices.map { $0.name })
@@ -312,21 +358,33 @@ class MenuBar
 			__MenuItems.append(__MenuItem)
 		}
 
-		// Show unranked devices (available but not in priority list)
+		// Show unranked devices (connected or previously seen, but not in priority list)
 		let __PrioritySet = Set(priorityList)
-		let __UnrankedDevices = allDevices.filter { !__PrioritySet.contains($0.name) }.sorted(by: { $0.name < $1.name })
+		let __ConnectedNames = Set(allDevices.map { $0.name })
+		let __AllKnownNames = __ConnectedNames.union(Set(knownDeviceNames))
+		let __UnrankedNames = __AllKnownNames.subtracting(__PrioritySet).sorted()
 
-		if !__UnrankedDevices.isEmpty
+		if !__UnrankedNames.isEmpty
 		{
 			let __Separator = NSMenuItem.separator()
 			__MenuItems.append(__Separator)
 
-			for __AudioDevice in __UnrankedDevices
+			for __DeviceName in __UnrankedNames
 			{
 				let __MenuItem = NSMenuItem()
-				__MenuItem.title = "  \(__AudioDevice.name)"
+				let __IsConnected = __ConnectedNames.contains(__DeviceName)
+				let __IsActive = __DeviceName == activeDeviceName
 
-				if __AudioDevice.name == activeDeviceName
+				if __IsConnected
+				{
+					__MenuItem.title = "  \(__DeviceName)"
+				}
+				else
+				{
+					__MenuItem.title = "  \(__DeviceName) (\(NSLocalizedString("MenuBar.Disconnected", comment: "")))"
+				}
+
+				if __IsActive
 				{
 					__MenuItem.state = NSControl.StateValue.on
 				}
@@ -336,7 +394,7 @@ class MenuBar
 				let __Add = NSMenuItem()
 				__Add.title = NSLocalizedString("MenuBar.AddToPriority", comment: "")
 				__Add.target = self
-				__Add.representedObject = PriorityAction(deviceName: __AudioDevice.name, isInput: isInput, action: .add)
+				__Add.representedObject = PriorityAction(deviceName: __DeviceName, isInput: isInput, action: .add)
 				__Add.action = #selector(OnPriorityAction(_:))
 				__SubMenu.addItem(__Add)
 
