@@ -233,6 +233,51 @@ class Preferences
 			__DidMigrate = true
 		}
 
+		// Seed the known-device lists from all previously configured
+		// device names so that upgraded installs don't lose offline
+		// devices when they are removed from the priority list.
+		if self._PreferencesFile.KnownInputDeviceNames == nil
+		{
+			var __Seeds: [String] = []
+			if let __Name = self._PreferencesFile.InputDeviceName
+			{
+				__Seeds.append(__Name)
+			}
+			if let __Priority = self._PreferencesFile.InputDevicePriority
+			{
+				for __Name in __Priority where !__Seeds.contains(__Name)
+				{
+					__Seeds.append(__Name)
+				}
+			}
+			if !__Seeds.isEmpty
+			{
+				self._PreferencesFile.KnownInputDeviceNames = __Seeds
+				__DidMigrate = true
+			}
+		}
+
+		if self._PreferencesFile.KnownOutputDeviceNames == nil
+		{
+			var __Seeds: [String] = []
+			if let __AirPods = self._PreferencesFile.AirPodsDeviceNames
+			{
+				__Seeds.append(contentsOf: __AirPods)
+			}
+			if let __Priority = self._PreferencesFile.OutputDevicePriority
+			{
+				for __Name in __Priority where !__Seeds.contains(__Name)
+				{
+					__Seeds.append(__Name)
+				}
+			}
+			if !__Seeds.isEmpty
+			{
+				self._PreferencesFile.KnownOutputDeviceNames = __Seeds
+				__DidMigrate = true
+			}
+		}
+
 		if __DidMigrate
 		{
 			PreferencesLoader.WriteSettings(preferences: self._PreferencesFile)

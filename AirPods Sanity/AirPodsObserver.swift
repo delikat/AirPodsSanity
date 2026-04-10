@@ -91,19 +91,25 @@ private extension AirPodsObserver
 
 	func PerformInputEvaluation()
 	{
-		if !self._Preferences.IsEnabled
-		{
-			return
-		}
-
 		let __PriorityList = self._Preferences.InputDevicePriority
 
 		if __PriorityList.isEmpty
 		{
 			// Legacy fallback: no priority list configured.
-			// Replicate main-branch behavior: remember the last non-AirPods
-			// input device and restore it when AirPods hijack the input.
-			self.LegacyInputFallback()
+			// Always track the last non-AirPods input device, even when
+			// the sanitizer is disabled, so that re-enabling picks up
+			// the correct fallback device.
+			self.TrackLegacyInputDevice()
+
+			if self._Preferences.IsEnabled
+			{
+				self.LegacyInputFallback()
+			}
+			return
+		}
+
+		if !self._Preferences.IsEnabled
+		{
 			return
 		}
 
@@ -150,16 +156,28 @@ private extension AirPodsObserver
 		}
 	}
 
-	func LegacyInputFallback()
+	func TrackLegacyInputDevice()
 	{
 		guard let __DefaultInputDevice = self._Simply.defaultInputDevice else { return }
 
 		// If the current default is NOT an AirPods device, remember it
-		// as the safe fallback.
+		// as the safe fallback. This runs even when the sanitizer is
+		// disabled so re-enabling picks up the correct device.
 		let __AirPodsNames = self._Preferences.AirPodsDeviceNames
 		if __AirPodsNames.first(where: { $0 == __DefaultInputDevice.name }) == nil
 		{
 			self._DefaultInputDeviceName = __DefaultInputDevice.name
+		}
+	}
+
+	func LegacyInputFallback()
+	{
+		guard let __DefaultInputDevice = self._Simply.defaultInputDevice else { return }
+
+		// If the current default is NOT an AirPods device, nothing to do.
+		let __AirPodsNames = self._Preferences.AirPodsDeviceNames
+		if __AirPodsNames.first(where: { $0 == __DefaultInputDevice.name }) == nil
+		{
 			return
 		}
 
