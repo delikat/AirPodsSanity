@@ -12,6 +12,7 @@ class Preferences
 	private init()
 	{
 		self._PreferencesFile = PreferencesLoader.LoadSettings()
+		self.MigrateIfNeeded()
 	}
 	
 	static var Instance: Preferences
@@ -131,8 +132,171 @@ class Preferences
 		}
 	}
 	
+	public var InputDevicePriority: [String]
+	{
+		get
+		{
+			if let __UnWrapped = self._PreferencesFile.InputDevicePriority
+			{
+				return __UnWrapped
+			}
+			else
+			{
+				return []
+			}
+		}
+		set(value)
+		{
+			self._PreferencesFile.InputDevicePriority = value
+		}
+	}
+	
+	public var OutputDevicePriority: [String]
+	{
+		get
+		{
+			if let __UnWrapped = self._PreferencesFile.OutputDevicePriority
+			{
+				return __UnWrapped
+			}
+			else
+			{
+				return []
+			}
+		}
+		set(value)
+		{
+			self._PreferencesFile.OutputDevicePriority = value
+		}
+	}
+
+	public var KnownInputDeviceNames: [String]
+	{
+		get
+		{
+			if let __UnWrapped = self._PreferencesFile.KnownInputDeviceNames
+			{
+				return __UnWrapped
+			}
+			else
+			{
+				return []
+			}
+		}
+		set(value)
+		{
+			self._PreferencesFile.KnownInputDeviceNames = value
+		}
+	}
+
+	public var KnownOutputDeviceNames: [String]
+	{
+		get
+		{
+			if let __UnWrapped = self._PreferencesFile.KnownOutputDeviceNames
+			{
+				return __UnWrapped
+			}
+			else
+			{
+				return []
+			}
+		}
+		set(value)
+		{
+			self._PreferencesFile.KnownOutputDeviceNames = value
+		}
+	}
+	
 	public func WriteSettings()
 	{
+		self.SyncLegacyKeys()
 		PreferencesLoader.WriteSettings(preferences: self._PreferencesFile)
+	}
+	
+	private func MigrateIfNeeded()
+	{
+		var __DidMigrate = false
+
+		if self._PreferencesFile.InputDevicePriority == nil,
+		   let __InputDeviceName = self._PreferencesFile.InputDeviceName
+		{
+			self._PreferencesFile.InputDevicePriority = [__InputDeviceName]
+			__DidMigrate = true
+		}
+
+		if self._PreferencesFile.OutputDevicePriority == nil,
+		   let __AirPodsDeviceNames = self._PreferencesFile.AirPodsDeviceNames,
+		   !__AirPodsDeviceNames.isEmpty
+		{
+			self._PreferencesFile.OutputDevicePriority = __AirPodsDeviceNames
+			__DidMigrate = true
+		}
+
+		// Seed the known-device lists from all previously configured
+		// device names so that upgraded installs don't lose offline
+		// devices when they are removed from the priority list.
+		if self._PreferencesFile.KnownInputDeviceNames == nil
+		{
+			var __Seeds: [String] = []
+			if let __Name = self._PreferencesFile.InputDeviceName
+			{
+				__Seeds.append(__Name)
+			}
+			if let __Priority = self._PreferencesFile.InputDevicePriority
+			{
+				for __Name in __Priority where !__Seeds.contains(__Name)
+				{
+					__Seeds.append(__Name)
+				}
+			}
+			if !__Seeds.isEmpty
+			{
+				self._PreferencesFile.KnownInputDeviceNames = __Seeds
+				__DidMigrate = true
+			}
+		}
+
+		if self._PreferencesFile.KnownOutputDeviceNames == nil
+		{
+			var __Seeds: [String] = []
+			if let __AirPods = self._PreferencesFile.AirPodsDeviceNames
+			{
+				__Seeds.append(contentsOf: __AirPods)
+			}
+			if let __Priority = self._PreferencesFile.OutputDevicePriority
+			{
+				for __Name in __Priority where !__Seeds.contains(__Name)
+				{
+					__Seeds.append(__Name)
+				}
+			}
+			if !__Seeds.isEmpty
+			{
+				self._PreferencesFile.KnownOutputDeviceNames = __Seeds
+				__DidMigrate = true
+			}
+		}
+
+		if __DidMigrate
+		{
+			PreferencesLoader.WriteSettings(preferences: self._PreferencesFile)
+		}
+	}
+
+	private func SyncLegacyKeys()
+	{
+		// Keep legacy keys in sync with the new priority lists so that:
+		// (a) LegacyInputFallback() sees newly added/removed AirPods models,
+		// (b) downgrading within the compatibility window picks up edits.
+		if let __InputPriority = self._PreferencesFile.InputDevicePriority
+		{
+			self._PreferencesFile.InputDeviceName = __InputPriority.first
+		}
+
+		if let __OutputPriority = self._PreferencesFile.OutputDevicePriority
+		{
+			self._PreferencesFile.AirPodsDeviceNames = __OutputPriority
+		}
 	}
 }

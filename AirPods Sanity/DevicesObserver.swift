@@ -11,6 +11,8 @@ import SimplyCoreAudio
 class DevicesObserver: ObservableObject
 {
 	let InputDevicesChanged = Event<[AudioDevice]>()
+	let OutputDevicesChanged = Event<[AudioDevice]>()
+	let DefaultDeviceChanged = Event<Void>()
 
 	private let _Simply = SimplyCoreAudio()
 	private var _Observers = [NSObjectProtocol]()
@@ -40,10 +42,12 @@ internal extension DevicesObserver
 {
 	func UpdateDefaultInputDevice()
 	{
+		self.DefaultDeviceChanged.raise(data: ())
 	}
 
 	func UpdateDefaultOutputDevice()
 	{
+		self.DefaultDeviceChanged.raise(data: ())
 	}
 
 	func UpdateDefaultSystemDevice()
@@ -58,12 +62,14 @@ internal extension DevicesObserver
 	
 	private func RefreshDeviceListWithRetry()
 	{
-		let currentDevices = self._Simply.allInputDevices
+		let currentInputDevices = self._Simply.allInputDevices
+		let currentOutputDevices = self._Simply.allOutputDevices
 		
 		// Debug logging to track device detection
-		NSLog("AirPods Sanity: Device list refresh attempt \(self._RetryCount + 1)/\(self._MaxRetries + 1), found \(currentDevices.count) input devices")
+		NSLog("AirPods Sanity: Device list refresh attempt \(self._RetryCount + 1)/\(self._MaxRetries + 1), found \(currentInputDevices.count) input devices, \(currentOutputDevices.count) output devices")
 		
-		self.InputDevicesChanged.raise(data: currentDevices)
+		self.InputDevicesChanged.raise(data: currentInputDevices)
+		self.OutputDevicesChanged.raise(data: currentOutputDevices)
 		
 		// If we haven't reached max retries, schedule another attempt
 		if self._RetryCount < self._MaxRetries {
@@ -82,6 +88,7 @@ internal extension DevicesObserver
 		self._RefreshTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { _ in
 			NSLog("AirPods Sanity: Periodic device list refresh")
 			self.InputDevicesChanged.raise(data: self._Simply.allInputDevices)
+			self.OutputDevicesChanged.raise(data: self._Simply.allOutputDevices)
 		}
 	}
 	

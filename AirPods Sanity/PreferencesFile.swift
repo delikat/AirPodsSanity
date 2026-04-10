@@ -16,4 +16,8 @@ class PreferencesFile: Codable
 	var IsEnabled: Bool?
 	var InputDeviceName: String?
 	var AirPodsDeviceNames: [String]?
+	var InputDevicePriority: [String]?
+	var OutputDevicePriority: [String]?
+	var KnownInputDeviceNames: [String]?
+	var KnownOutputDeviceNames: [String]?
 }

@@ -56,10 +56,10 @@ class MenuBar
 	public func CreateMenu()
 	{
 		self._InputDeviceItems.removeAll()
-		self._InputDeviceItems = self.CreateInputDeviceItems(simply: self._SimplyCoreAudio, preferences: self._Preferences)
+		self._InputDeviceItems = self.CreateInputPriorityItems(simply: self._SimplyCoreAudio, preferences: self._Preferences)
 
 		self._OutputDeviceItems.removeAll()
-		self._OutputDeviceItems = self.CreateOutputDeviceItems(simply: self._SimplyCoreAudio, preferences: self._Preferences)
+		self._OutputDeviceItems = self.CreateOutputPriorityItems(simply: self._SimplyCoreAudio, preferences: self._Preferences)
 
 		let __Menu = NSMenu()
 
@@ -217,54 +217,194 @@ class MenuBar
 		return NSMenuItem(title: __QuitLabel, action: #selector(NSApplication.terminate(_:)), keyEquivalent: __QuitShortcut)
 	}
 
-	private func CreateInputDeviceItems(simply: SimplyCoreAudio, preferences: Preferences) -> [NSMenuItem]
+	// MARK: - Priority-based Device Items
+
+	private func CreateInputPriorityItems(simply: SimplyCoreAudio, preferences: Preferences) -> [NSMenuItem]
 	{
-		let __InputDevices = simply.allInputDevices
-		var __MenuItems: [NSMenuItem] = []
+		let __AllDevices = simply.allInputDevices
+		let __PriorityList = preferences.InputDevicePriority
+		let __DefaultDevice = simply.defaultInputDevice
 
-		for __AudioDevice in __InputDevices
-		{
-			let __MenuItem = NSMenuItem()
+		// Persist any newly seen input device names
+		let __CurrentNames = __AllDevices.map { $0.name }
+		self.UpdateKnownDevices(currentNames: __CurrentNames, isInput: true)
 
-			__MenuItem.title = __AudioDevice.name
-			__MenuItem.target = self
-			__MenuItem.action = #selector(OnSelectInputDevice(_:))
-			__MenuItem.state = NSControl.StateValue.off
+		// Merge currently connected + previously seen for the addable pool
+		let __KnownNames = preferences.KnownInputDeviceNames
 
-			if __AudioDevice.name == preferences.InputDeviceName
-			{
-				__MenuItem.state = NSControl.StateValue.on
-			}
-
-			__MenuItems.append(__MenuItem)
-		}
-
-		return __MenuItems.sorted(by: { $0.title < $1.title })
+		return self.CreatePriorityDeviceItems(
+			allDevices: __AllDevices,
+			knownDeviceNames: __KnownNames,
+			priorityList: __PriorityList,
+			activeDeviceName: __DefaultDevice?.name,
+			isInput: true
+		)
 	}
 
-	private func CreateOutputDeviceItems(simply: SimplyCoreAudio, preferences: Preferences) -> [NSMenuItem]
+	private func CreateOutputPriorityItems(simply: SimplyCoreAudio, preferences: Preferences) -> [NSMenuItem]
 	{
-		let __InputDevices = simply.allOutputDevices
-		var __MenuItems: [NSMenuItem] = []
+		let __AllDevices = simply.allOutputDevices
+		let __PriorityList = preferences.OutputDevicePriority
+		let __DefaultDevice = simply.defaultOutputDevice
 
-		for __AudioDevice in __InputDevices
+		// Persist any newly seen output device names
+		let __CurrentNames = __AllDevices.map { $0.name }
+		self.UpdateKnownDevices(currentNames: __CurrentNames, isInput: false)
+
+		// Merge currently connected + previously seen for the addable pool
+		let __KnownNames = preferences.KnownOutputDeviceNames
+
+		return self.CreatePriorityDeviceItems(
+			allDevices: __AllDevices,
+			knownDeviceNames: __KnownNames,
+			priorityList: __PriorityList,
+			activeDeviceName: __DefaultDevice?.name,
+			isInput: false
+		)
+	}
+
+	private func UpdateKnownDevices(currentNames: [String], isInput: Bool)
+	{
+		var __Known = isInput ? self._Preferences.KnownInputDeviceNames : self._Preferences.KnownOutputDeviceNames
+		let __KnownSet = Set(__Known)
+		var __DidChange = false
+
+		for __Name in currentNames
 		{
+			if !__KnownSet.contains(__Name)
+			{
+				__Known.append(__Name)
+				__DidChange = true
+			}
+		}
+
+		if __DidChange
+		{
+			if isInput
+			{
+				self._Preferences.KnownInputDeviceNames = __Known
+			}
+			else
+			{
+				self._Preferences.KnownOutputDeviceNames = __Known
+			}
+
+			self._Preferences.WriteSettings()
+		}
+	}
+
+	private func CreatePriorityDeviceItems(allDevices: [AudioDevice], knownDeviceNames: [String], priorityList: [String], activeDeviceName: String?, isInput: Bool) -> [NSMenuItem]
+	{
+		var __MenuItems: [NSMenuItem] = []
+		let __AllDeviceNames = Set(allDevices.map { $0.name })
+
+		// Show priority-listed devices first, in priority order
+		for (index, deviceName) in priorityList.enumerated()
+		{
+			let __IsAvailable = __AllDeviceNames.contains(deviceName)
+			let __IsActive = deviceName == activeDeviceName
+			let __Rank = index + 1
+
 			let __MenuItem = NSMenuItem()
 
-			__MenuItem.title = __AudioDevice.name
-			__MenuItem.target = self
-			__MenuItem.action = #selector(OnSelectOutputDevice(_:))
-			__MenuItem.state = NSControl.StateValue.off
+			if __IsAvailable
+			{
+				__MenuItem.title = "#\(__Rank) \(deviceName)"
+			}
+			else
+			{
+				__MenuItem.title = "#\(__Rank) \(deviceName) (\(NSLocalizedString("MenuBar.Disconnected", comment: "")))"
+			}
 
-			if preferences.AirPodsDeviceNames.contains(__AudioDevice.name)
+			if __IsActive
 			{
 				__MenuItem.state = NSControl.StateValue.on
 			}
 
+			// Submenu with Move Up / Move Down / Remove
+			let __SubMenu = NSMenu()
+
+			if index > 0
+			{
+				let __MoveUp = NSMenuItem()
+				__MoveUp.title = NSLocalizedString("MenuBar.MoveUp", comment: "")
+				__MoveUp.target = self
+				__MoveUp.representedObject = PriorityAction(deviceName: deviceName, isInput: isInput, action: .moveUp)
+				__MoveUp.action = #selector(OnPriorityAction(_:))
+				__SubMenu.addItem(__MoveUp)
+			}
+
+			if index < priorityList.count - 1
+			{
+				let __MoveDown = NSMenuItem()
+				__MoveDown.title = NSLocalizedString("MenuBar.MoveDown", comment: "")
+				__MoveDown.target = self
+				__MoveDown.representedObject = PriorityAction(deviceName: deviceName, isInput: isInput, action: .moveDown)
+				__MoveDown.action = #selector(OnPriorityAction(_:))
+				__SubMenu.addItem(__MoveDown)
+			}
+
+			__SubMenu.addItem(NSMenuItem.separator())
+
+			let __Remove = NSMenuItem()
+			__Remove.title = NSLocalizedString("MenuBar.RemoveFromPriority", comment: "")
+			__Remove.target = self
+			__Remove.representedObject = PriorityAction(deviceName: deviceName, isInput: isInput, action: .remove)
+			__Remove.action = #selector(OnPriorityAction(_:))
+			__SubMenu.addItem(__Remove)
+
+			__MenuItem.submenu = __SubMenu
+
 			__MenuItems.append(__MenuItem)
 		}
 
-		return __MenuItems.sorted(by: { $0.title < $1.title })
+		// Show unranked devices (connected or previously seen, but not in priority list)
+		let __PrioritySet = Set(priorityList)
+		let __ConnectedNames = Set(allDevices.map { $0.name })
+		let __AllKnownNames = __ConnectedNames.union(Set(knownDeviceNames))
+		let __UnrankedNames = __AllKnownNames.subtracting(__PrioritySet).sorted()
+
+		if !__UnrankedNames.isEmpty
+		{
+			let __Separator = NSMenuItem.separator()
+			__MenuItems.append(__Separator)
+
+			for __DeviceName in __UnrankedNames
+			{
+				let __MenuItem = NSMenuItem()
+				let __IsConnected = __ConnectedNames.contains(__DeviceName)
+				let __IsActive = __DeviceName == activeDeviceName
+
+				if __IsConnected
+				{
+					__MenuItem.title = "  \(__DeviceName)"
+				}
+				else
+				{
+					__MenuItem.title = "  \(__DeviceName) (\(NSLocalizedString("MenuBar.Disconnected", comment: "")))"
+				}
+
+				if __IsActive
+				{
+					__MenuItem.state = NSControl.StateValue.on
+				}
+
+				// Submenu with Add to Priority List
+				let __SubMenu = NSMenu()
+				let __Add = NSMenuItem()
+				__Add.title = NSLocalizedString("MenuBar.AddToPriority", comment: "")
+				__Add.target = self
+				__Add.representedObject = PriorityAction(deviceName: __DeviceName, isInput: isInput, action: .add)
+				__Add.action = #selector(OnPriorityAction(_:))
+				__SubMenu.addItem(__Add)
+
+				__MenuItem.submenu = __SubMenu
+
+				__MenuItems.append(__MenuItem)
+			}
+		}
+
+		return __MenuItems
 	}
 
 	private func AddItems(menu: NSMenu, items: [NSMenuItem], label: String)
@@ -282,6 +422,8 @@ class MenuBar
 		}
 	}
 	
+	// MARK: - Toggle Actions
+
 	@objc private func OnToggleLaunchOnLogin(_ sender: NSMenuItem)
 	{
 		let __Preferences = self._Preferences
@@ -364,52 +506,82 @@ class MenuBar
 		self._Preferences.WriteSettings()
 	}
 
-	@objc private func OnSelectInputDevice(_ sender: NSMenuItem)
+	// MARK: - Priority Actions
+
+	@objc private func OnPriorityAction(_ sender: NSMenuItem)
 	{
-		let __Preferences = self._Preferences
-		let __State = sender.state
+		guard let __Action = sender.representedObject as? PriorityAction else { return }
 
-		for __Item in self._InputDeviceItems
-		{
-			__Item.state = NSControl.StateValue.off
-		}
+		var __PriorityList = __Action.isInput ? self._Preferences.InputDevicePriority : self._Preferences.OutputDevicePriority
 
-		if __State == NSControl.StateValue.on
+		switch __Action.action
 		{
-			__Preferences.InputDeviceName = nil
-		}
-		else if __State == NSControl.StateValue.off
-		{
-			__Preferences.InputDeviceName = sender.title
-			sender.state = NSControl.StateValue.on
-		}
-		
-		self._Preferences.WriteSettings()
-	}
-
-	@objc private func OnSelectOutputDevice(_ sender: NSMenuItem)
-	{
-		let __Preferences = self._Preferences
-
-		if sender.state == NSControl.StateValue.on
-		{
-			if __Preferences.AirPodsDeviceNames.contains(sender.title)
+		case .moveUp:
+			if let __Index = __PriorityList.firstIndex(of: __Action.deviceName), __Index > 0
 			{
-				__Preferences.AirPodsDeviceNames = __Preferences.AirPodsDeviceNames.filter { $0 != sender.title }
+				__PriorityList.swapAt(__Index, __Index - 1)
 			}
 
-			sender.state = NSControl.StateValue.off
-		}
-		else if sender.state == NSControl.StateValue.off
-		{
-			if !__Preferences.AirPodsDeviceNames.contains(sender.title)
+		case .moveDown:
+			if let __Index = __PriorityList.firstIndex(of: __Action.deviceName), __Index < __PriorityList.count - 1
 			{
-				__Preferences.AirPodsDeviceNames.append(sender.title)
+				__PriorityList.swapAt(__Index, __Index + 1)
 			}
 
-			sender.state = NSControl.StateValue.on
+		case .add:
+			if !__PriorityList.contains(__Action.deviceName)
+			{
+				__PriorityList.append(__Action.deviceName)
+			}
+
+		case .remove:
+			__PriorityList.removeAll { $0 == __Action.deviceName }
 		}
-		
+
+		if __Action.isInput
+		{
+			self._Preferences.InputDevicePriority = __PriorityList
+		}
+		else
+		{
+			self._Preferences.OutputDevicePriority = __PriorityList
+		}
+
 		self._Preferences.WriteSettings()
+		self.CreateMenu()
+
+		// Post notification so AirPodsObserver re-evaluates priorities
+		NotificationCenter.default.post(name: .priorityListChanged, object: nil)
 	}
+}
+
+// MARK: - Supporting Types
+
+private enum PriorityActionType
+{
+	case moveUp
+	case moveDown
+	case add
+	case remove
+}
+
+private class PriorityAction: NSObject
+{
+	let deviceName: String
+	let isInput: Bool
+	let action: PriorityActionType
+
+	init(deviceName: String, isInput: Bool, action: PriorityActionType)
+	{
+		self.deviceName = deviceName
+		self.isInput = isInput
+		self.action = action
+	}
+}
+
+// MARK: - Custom Notification Name
+
+extension Notification.Name
+{
+	static let priorityListChanged = Notification.Name("eu.punke.AirPods-Sanity.PriorityListChanged")
 }
